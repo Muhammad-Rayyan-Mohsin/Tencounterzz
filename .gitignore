@@ -1,0 +1,43 @@
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/node_modules/
+frontend/tsconfig.tsbuildinfo
+
+# Uploaded videos (keep placeholder)
+frontend/public/uploads/*.mp4
+frontend/public/uploads/*.avi
+frontend/public/uploads/*.mov
+!frontend/public/uploads/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Model weights (too large for git)
+*.pt
+*.pth
+*.pkl
+*.onnx
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
