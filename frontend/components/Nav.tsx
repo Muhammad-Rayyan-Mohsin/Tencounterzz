@@ -3,7 +3,7 @@ import { Barbell, GithubLogo, Upload } from '@phosphor-icons/react/dist/ssr'
 
 export default function Nav() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-40 border-b border-white/[0.06] bg-[#0c0c0e]/80 backdrop-blur-xl">
+    <nav className="fixed top-0 left-0 right-0 z-40 border-b border-white/[0.06] bg-[#0c0c0e]/80 backdrop-blur-xl will-change-transform">
       <div className="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
           <div className="w-7 h-7 bg-rose-600 rounded-[6px] flex items-center justify-center shadow-[0_0_0_1px_rgba(225,29,72,0.3)] group-hover:bg-rose-500 transition-colors">

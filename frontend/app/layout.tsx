@@ -35,6 +35,10 @@ export default function RootLayout({
       lang="en"
       className={`${GeistSans.variable} ${GeistMono.variable} ${plusJakarta.variable} ${cormorant.variable} scroll-smooth`}
     >
+      <head>
+        <link rel="preconnect" href="https://images.unsplash.com" />
+        <link rel="dns-prefetch" href="https://images.unsplash.com" />
+      </head>
       <body className="font-sans bg-[#0c0c0e] text-zinc-50 antialiased">
         <SmoothScrollProvider>{children}</SmoothScrollProvider>
       </body>

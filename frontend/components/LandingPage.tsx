@@ -33,7 +33,7 @@ import {
   Graph,
   PersonSimpleRun,
   Stack,
-} from '@phosphor-icons/react'
+} from '@phosphor-icons/react/dist/ssr'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -366,15 +366,12 @@ export default function LandingPage() {
         .from(heroSubRef.current, { y: 20, opacity: 0, duration: 0.6, ease: 'power2.out' }, '-=0.45')
         .from(heroCTARef.current, { y: 16, opacity: 0, duration: 0.5, ease: 'power2.out' }, '-=0.35')
 
-      // Navbar opaque on scroll
+      // Navbar opaque on scroll — toggle class instead of per-frame style writes
       ScrollTrigger.create({
         start: 'top -40',
         onUpdate: self => {
           if (navRef.current) {
-            const scrolled = self.scroll() > 40
-            navRef.current.style.background = scrolled ? 'rgba(12,12,14,0.92)' : 'transparent'
-            navRef.current.style.backdropFilter = scrolled ? 'blur(20px)' : 'blur(0px)'
-            navRef.current.style.borderColor = scrolled ? 'rgba(255,255,255,0.06)' : 'transparent'
+            navRef.current.classList.toggle('nav-scrolled', self.scroll() > 40)
           }
         },
       })
@@ -396,8 +393,8 @@ export default function LandingPage() {
       {/* ── Floating Nav ── */}
       <nav
         ref={navRef}
-        className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
-        style={{ background: 'transparent', borderBottom: '1px solid transparent', backdropFilter: 'blur(0px)' }}
+        className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 will-change-transform"
+        style={{ background: 'transparent', borderBottom: '1px solid transparent' }}
       >
         <div className="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
@@ -535,12 +532,8 @@ export default function LandingPage() {
             style={{ background: 'rgba(12,10,15,0.55)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
           >
             {/* Blur shimmer — materialises after card rises */}
-            <motion.div
-              className="absolute inset-0 pointer-events-none rounded-[1.75rem]"
-              initial={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)' }}
-              whileInView={{ backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)' }}
-              transition={{ duration: 0.9, delay: 0.12, ease: 'easeOut' }}
-              viewport={{ once: true }}
+            <div
+              className="absolute inset-0 pointer-events-none rounded-[1.75rem] backdrop-blur-[22px] will-change-transform"
             />
             <div className="relative z-10 flex flex-col h-full">
               <div className="flex items-center gap-3 mb-1">
@@ -563,12 +556,8 @@ export default function LandingPage() {
             className="relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
             style={{ background: 'rgba(12,10,15,0.55)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
           >
-            <motion.div
-              className="absolute inset-0 pointer-events-none rounded-[1.75rem]"
-              initial={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)' }}
-              whileInView={{ backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)' }}
-              transition={{ duration: 0.9, delay: 0.22, ease: 'easeOut' }}
-              viewport={{ once: true }}
+            <div
+              className="absolute inset-0 pointer-events-none rounded-[1.75rem] backdrop-blur-[22px] will-change-transform"
             />
             <div className="relative z-10 flex flex-col h-full">
               <div className="flex items-center gap-3 mb-1">
@@ -591,12 +580,8 @@ export default function LandingPage() {
             className="relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
             style={{ background: 'rgba(12,10,15,0.55)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
           >
-            <motion.div
-              className="absolute inset-0 pointer-events-none rounded-[1.75rem]"
-              initial={{ backdropFilter: 'blur(0px)', WebkitBackdropFilter: 'blur(0px)' }}
-              whileInView={{ backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)' }}
-              transition={{ duration: 0.9, delay: 0.32, ease: 'easeOut' }}
-              viewport={{ once: true }}
+            <div
+              className="absolute inset-0 pointer-events-none rounded-[1.75rem] backdrop-blur-[22px] will-change-transform"
             />
             <div className="relative z-10 flex flex-col h-full">
               <div className="flex items-center gap-3 mb-1">
@@ -679,7 +664,7 @@ export default function LandingPage() {
         ]).map((s, i) => (
           <div
             key={s.stage}
-            className="sticky top-0 min-h-[100dvh] flex items-center bg-[#0c0c0e]"
+            className="sticky top-0 min-h-[100dvh] flex items-center bg-[#0c0c0e] will-change-transform"
             style={{ zIndex: 10 + i }}
           >
             {/* Full-bleed background photo */}

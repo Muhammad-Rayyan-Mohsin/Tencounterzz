@@ -272,9 +272,9 @@ export default function VideoDropzone() {
       <AnimatePresence>
         {state === 'uploading' && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
             <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
               <span className="flex items-center gap-1.5">

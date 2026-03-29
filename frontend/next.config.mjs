@@ -4,6 +4,7 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '500mb',
     },
+    optimizePackageImports: ['@phosphor-icons/react', 'framer-motion'],
   },
 }
 
