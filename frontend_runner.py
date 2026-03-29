@@ -26,8 +26,11 @@ parser.add_argument("--video",      required=True, help="Absolute path to input 
 parser.add_argument("--output-dir", required=True, help="Absolute path to output directory")
 args = parser.parse_args()
 
-# Change to FYP root so relative model paths resolve correctly
-FYP_ROOT = os.path.dirname(os.path.abspath(__file__))
+# Tencounterzz/ lives inside the FYP project root.
+# Import from THIS directory (local boxing_analytics_v2.py), then chdir to
+# FYP root so relative model paths (runs/, models/, Tracking and Counting/) resolve.
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+FYP_ROOT = os.path.dirname(THIS_DIR)
 os.chdir(FYP_ROOT)
 
 # ---------------------------------------------------------------------------
@@ -41,6 +44,8 @@ def emit(obj: dict):
 # ---------------------------------------------------------------------------
 # Import the module and patch the configuration constants
 # ---------------------------------------------------------------------------
+# Import from the local Tencounterzz directory (keeps repo self-contained)
+sys.path.insert(0, THIS_DIR)
 import boxing_analytics_v2 as ba  # noqa: E402
 
 ba.DETECTION_MODEL = (
