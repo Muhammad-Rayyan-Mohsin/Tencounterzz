@@ -6,6 +6,14 @@ const nextConfig = {
     },
     optimizePackageImports: ['@phosphor-icons/react', 'framer-motion'],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/uploads/:path*',
+        destination: '/api/uploads/:path*',
+      },
+    ]
+  },
 }
 
 export default nextConfig

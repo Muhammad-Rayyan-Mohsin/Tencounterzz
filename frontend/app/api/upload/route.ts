@@ -14,9 +14,8 @@ const FYP_ROOT   = path.join(process.cwd(), '..')
 const RUNNER     = path.join(FYP_ROOT, 'frontend_runner.py')
 const UPLOADS    = path.join(process.cwd(), 'public', 'uploads')
 
-// Python 3.9 (Xcode CLT) is the interpreter with all ML packages installed.
-// The Homebrew python3 (3.14) lacks numpy/torch/ultralytics.
-const PYTHON     = '/Library/Developer/CommandLineTools/usr/bin/python3'
+// Use PYTHON_BIN env var on deployed servers; fall back to macOS Xcode CLT locally.
+const PYTHON     = process.env.PYTHON_BIN || '/Library/Developer/CommandLineTools/usr/bin/python3'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

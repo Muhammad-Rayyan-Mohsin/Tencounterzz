@@ -30,6 +30,9 @@ env/
 .env.local
 .env.*.local
 
+# Deployment
+.deploy-state
+
 # OS
 .DS_Store
 Thumbs.db

@@ -26,12 +26,11 @@ parser.add_argument("--video",      required=True, help="Absolute path to input 
 parser.add_argument("--output-dir", required=True, help="Absolute path to output directory")
 args = parser.parse_args()
 
-# Tencounterzz/ lives inside the FYP project root.
-# Import from THIS directory (local boxing_analytics_v2.py), then chdir to
-# FYP root so relative model paths (runs/, models/, Tracking and Counting/) resolve.
+# Resolve project root: on deployed servers PROJECT_ROOT env var points to the
+# Tencounterzz directory; locally we go up one level to the FYP root.
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-FYP_ROOT = os.path.dirname(THIS_DIR)
-os.chdir(FYP_ROOT)
+PROJECT_ROOT = os.environ.get("PROJECT_ROOT", os.path.dirname(THIS_DIR))
+os.chdir(PROJECT_ROOT)
 
 # ---------------------------------------------------------------------------
 # JSON emitter — always flushed so Node.js readline sees it immediately
