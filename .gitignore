@@ -32,6 +32,7 @@ env/
 
 # Deployment
 .deploy-state
+.eip-state
 
 # OS
 .DS_Store

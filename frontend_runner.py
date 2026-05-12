@@ -29,7 +29,7 @@ args = parser.parse_args()
 # Resolve project root: on deployed servers PROJECT_ROOT env var points to the
 # Tencounterzz directory; locally we go up one level to the FYP root.
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.environ.get("PROJECT_ROOT", os.path.dirname(THIS_DIR))
+PROJECT_ROOT = os.environ.get("PROJECT_ROOT", THIS_DIR)
 os.chdir(PROJECT_ROOT)
 
 # ---------------------------------------------------------------------------
