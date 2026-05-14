@@ -17,6 +17,10 @@ Run:
 from pathlib import Path
 from collections import deque
 from datetime import datetime
+import base64
+import json
+import shutil
+import subprocess
 
 import numpy as np
 import cv2
@@ -36,7 +40,11 @@ VIDEO_PATH         = "Recording 2025-12-08 051750.mp4"
 OUTPUT_DIR         = "runs/inference_v2"
 
 # Detection
-DETECTION_CONF     = 0.35
+# Lowered from 0.35 → 0.25 so the YOLO inference call surfaces lower-confidence
+# third-person detections (referee). The top-2 fighter selection still uses
+# the INERTIA_BONUS so established fighter tracks remain stable; the extra
+# 0.25–0.35 detections only feed the referee candidate pool.
+DETECTION_CONF     = 0.25
 DETECTION_IOU      = 0.45
 IMAGE_SIZE         = 640
 DEVICE             = "mps" if torch.backends.mps.is_available() else \
@@ -104,7 +112,13 @@ INTENSITY_COLORS = {
 }
 
 # ── Referee module ─────────────────────────────────────────────────────────
-REFEREE_CONF_THRESH = 0.30   # min detection confidence for referee slot
+REFEREE_CONF_THRESH = 0.20   # min detection confidence for referee slot
+
+# ── Spatial heatmap ────────────────────────────────────────────────────────
+HEATMAP_GRID_W  = 64
+HEATMAP_GRID_H  = 64
+HEATMAP_SIGMA   = 1.5
+HEATMAP_KPT_CONF = 0.4
 
 # Punch type colours (BGR)
 PUNCH_COLORS = {
@@ -643,6 +657,20 @@ def _box_iou(box_a, box_b):
     return inter / (a1 + a2 - inter + 1e-6)
 
 
+def _splat(grid: np.ndarray, gx: float, gy: float, sigma: float = 1.5):
+    """Add a normalised gaussian blob centred at (gx, gy) into grid (in-place)."""
+    H, W = grid.shape
+    radius = int(np.ceil(sigma * 3))
+    x0, x1 = max(0, int(gx) - radius), min(W, int(gx) + radius + 1)
+    y0, y1 = max(0, int(gy) - radius), min(H, int(gy) + radius + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    xs = np.arange(x0, x1)[None, :] - gx
+    ys = np.arange(y0, y1)[:, None] - gy
+    blob = np.exp(-(xs * xs + ys * ys) / (2.0 * sigma * sigma)).astype(np.float32)
+    grid[y0:y1, x0:x1] += blob
+
+
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -697,6 +725,15 @@ def main():
     next_id        = 1
     frame_n        = 0
     referee_track  = None   # single FighterTrack slot for the referee
+    heatmap_grids  = {}     # fighter_id → (H,W) float32 accumulator
+    heatmap_counts = {}     # fighter_id → number of accumulated samples
+    first_frame_bg = None
+    # Referee diagnostics — let us see *empirically* why a referee did/didn't appear
+    diag_frames           = 0
+    diag_det_count_sum    = 0
+    diag_max_det_in_frame = 0
+    diag_frames_3plus_det = 0
+    diag_frames_with_ref  = 0
 
     print("\nProcessing...\n")
 
@@ -705,6 +742,8 @@ def main():
         if not ret:
             break
         frame_n += 1
+        if frame_n == 1:
+            first_frame_bg = frame.copy()
         if frame_n % 60 == 0:
             print(f"  Frame {frame_n}/{total}  ({100*frame_n/total:.1f}%)")
 
@@ -788,6 +827,16 @@ def main():
             if not referee_track.is_active():
                 referee_track = None
 
+        # Referee diagnostics (tracked per-frame so we can report why a video
+        # had/didn't have a referee).
+        diag_frames           += 1
+        diag_det_count_sum    += len(all_boxes)
+        diag_max_det_in_frame  = max(diag_max_det_in_frame, len(all_boxes))
+        if len(all_boxes) >= 3:
+            diag_frames_3plus_det += 1
+        if referee_track is not None and referee_track.is_active() and referee_track.missed_frames == 0:
+            diag_frames_with_ref += 1
+
         # ── Stage 2: Pose on fighter crops ────────────────────────────────────
         fighter_tracks = [t for t in tracks if t.is_fighter and t.is_active()
                           and t.missed_frames == 0]
@@ -852,6 +901,28 @@ def main():
                 # Hold last good keypoints for 1-2 frame gaps (maintains contiguity)
                 kpt_buffers[track.id].append(last_good_kpts[track.id])
                 kpt_frame_ids[track.id].append(frame_n)
+
+            # ── Spatial heatmap accumulation ──────────────────────────────────
+            if track.id in fighter_states:
+                if track.id not in heatmap_grids:
+                    heatmap_grids[track.id]  = np.zeros((HEATMAP_GRID_H, HEATMAP_GRID_W), dtype=np.float32)
+                    heatmap_counts[track.id] = 0
+                pos_x = pos_y = None
+                if pose_ok:
+                    c = confs[0]
+                    if c[15] > HEATMAP_KPT_CONF and c[16] > HEATMAP_KPT_CONF:
+                        pos_x = float((kpts_full[15, 0] + kpts_full[16, 0]) * 0.5)
+                        pos_y = float((kpts_full[15, 1] + kpts_full[16, 1]) * 0.5)
+                    elif c[11] > HEATMAP_KPT_CONF and c[12] > HEATMAP_KPT_CONF:
+                        pos_x = float((kpts_full[11, 0] + kpts_full[12, 0]) * 0.5)
+                        pos_y = float((kpts_full[11, 1] + kpts_full[12, 1]) * 0.5)
+                if pos_x is None:
+                    pos_x = float((x1 + x2) * 0.5)
+                    pos_y = float(y2)
+                gx = max(0.0, min(HEATMAP_GRID_W - 1e-3, pos_x / W * HEATMAP_GRID_W))
+                gy = max(0.0, min(HEATMAP_GRID_H - 1e-3, pos_y / H * HEATMAP_GRID_H))
+                _splat(heatmap_grids[track.id], gx, gy, HEATMAP_SIGMA)
+                heatmap_counts[track.id] += 1
 
             # ── Classify + compute intensity on confirmed punch event ─────────
             is_punch, arm_side = fighter_states[track.id].check_punch()
@@ -968,6 +1039,165 @@ def main():
     cap.release()
     writer.release()
 
+    # ── Merge logical-fighter heatmap data across recycled track IDs ─────────
+    # YOLO track IDs can drift when a fighter is occluded then re-detected.
+    # We expose only TWO logical fighters to the frontend. The two tracks with
+    # the most accumulated samples are the "true" fighters; we additionally
+    # merge any other tracks into whichever logical fighter is closer (by
+    # weighted-centroid distance) so heatmap data isn't lost.
+    eligible_fids = [fid for fid in heatmap_grids.keys() if fid in fighter_states]
+    fighter_ids_ranked = sorted(
+        eligible_fids,
+        key=lambda fid: heatmap_counts.get(fid, 0),
+        reverse=True,
+    )
+
+    if fighter_ids_ranked:
+        def _weighted_centroid(grid_f32: np.ndarray):
+            total = float(grid_f32.sum())
+            if total < 1e-6:
+                return (HEATMAP_GRID_W * 0.5, HEATMAP_GRID_H * 0.5)
+            ys, xs = np.indices(grid_f32.shape)
+            cx = float((xs * grid_f32).sum()) / total
+            cy = float((ys * grid_f32).sum()) / total
+            return (cx, cy)
+
+        # Two "anchor" tracks → logical fighters 1 and 2 (top by sample count)
+        anchors = fighter_ids_ranked[:2]
+        anchor_centroids = {fid: _weighted_centroid(heatmap_grids[fid]) for fid in anchors}
+
+        # Each remaining track is merged into the closer anchor.
+        merged: dict[int, np.ndarray] = {fid: heatmap_grids[fid].copy() for fid in anchors}
+        merged_counts: dict[int, int] = {fid: int(heatmap_counts.get(fid, 0)) for fid in anchors}
+        slot_raw_ids: dict[int, list] = {1: [], 2: []}
+        for fid in anchors:
+            slot_raw_ids[anchors.index(fid) + 1].append(int(fid))
+        for fid in fighter_ids_ranked[2:]:
+            if len(anchors) < 2:
+                break
+            c = _weighted_centroid(heatmap_grids[fid])
+            best = min(anchors, key=lambda a: (c[0] - anchor_centroids[a][0]) ** 2 +
+                                              (c[1] - anchor_centroids[a][1]) ** 2)
+            merged[best] += heatmap_grids[fid]
+            merged_counts[best] += int(heatmap_counts.get(fid, 0))
+            slot_raw_ids[anchors.index(best) + 1].append(int(fid))
+
+        # Now map anchors → canonical slots 1 and 2 (most samples = slot 1)
+        slot_for: dict[int, int] = {anchors[i]: i + 1 for i in range(len(anchors))}
+
+        bg_path = out_dir / f"v2_{ts}_bg.jpg"
+        if first_frame_bg is not None:
+            cv2.imwrite(str(bg_path), first_frame_bg,
+                        [int(cv2.IMWRITE_JPEG_QUALITY), 65])
+
+        fighters_payload = {}
+        norm_grids: dict[int, np.ndarray] = {}
+        for fid in anchors:
+            g = cv2.GaussianBlur(merged[fid], (0, 0), 1.0)
+            gmax = float(g.max())
+            if gmax > 1e-6:
+                gu8 = (g / gmax * 255.0).clip(0, 255).astype(np.uint8)
+            else:
+                gu8 = np.zeros_like(g, dtype=np.uint8)
+            norm_grids[slot_for[fid]] = gu8
+            fighters_payload[str(slot_for[fid])] = {
+                "grid":   base64.b64encode(gu8.tobytes()).decode("ascii"),
+                "frames": merged_counts[fid],
+            }
+
+        # Dominance + zones (all in canonical slot space)
+        cy0, cy1 = 22, 43   # central ~30% rect
+        cx0, cx1 = 22, 43
+
+        def _centroid_and_zone(gu8):
+            total = float(gu8.sum())
+            if total < 1e-6:
+                return (0.5, 0.5), "center"
+            ys, xs = np.indices(gu8.shape)
+            cx = float((xs * gu8).sum()) / total / HEATMAP_GRID_W
+            cy = float((ys * gu8).sum()) / total / HEATMAP_GRID_H
+            if cx < 0.35:
+                zone = "left"
+            elif cx > 0.65:
+                zone = "right"
+            else:
+                zone = "center"
+            return (round(cx, 4), round(cy, 4)), zone
+
+        center_control = {}
+        for slot, gu8 in norm_grids.items():
+            total_sum = float(gu8.sum())
+            center_sum = float(gu8[cy0:cy1, cx0:cx1].sum())
+            pct = (100.0 * center_sum / total_sum) if total_sum > 1e-6 else 0.0
+            center_control[str(slot)] = round(pct, 2)
+
+        dominance = {"center_control": center_control}
+
+        if 1 in norm_grids and 2 in norm_grids:
+            g1 = norm_grids[1].astype(np.int16)
+            g2 = norm_grids[2].astype(np.int16)
+            diff = g1 - g2
+            f1_dom_cells = int((diff > 30).sum())
+            f2_dom_cells = int((diff < -30).sum())
+            contested_mask = (diff >= -30) & (diff <= 30) & ((g1 > 30) | (g2 > 30))
+            contested_cells = int(contested_mask.sum())
+            total_active = f1_dom_cells + f2_dom_cells + contested_cells
+            if total_active > 0:
+                dominance["fighter1_pct"]  = round(100.0 * f1_dom_cells / total_active, 2)
+                dominance["fighter2_pct"]  = round(100.0 * f2_dom_cells / total_active, 2)
+                dominance["contested_pct"] = round(100.0 * contested_cells / total_active, 2)
+            else:
+                dominance["fighter1_pct"]  = 0.0
+                dominance["fighter2_pct"]  = 0.0
+                dominance["contested_pct"] = 0.0
+            c1, z1 = _centroid_and_zone(norm_grids[1])
+            c2, z2 = _centroid_and_zone(norm_grids[2])
+            dominance["fighter1_zone"]     = z1
+            dominance["fighter2_zone"]     = z2
+            dominance["fighter1_centroid"] = list(c1)
+            dominance["fighter2_centroid"] = list(c2)
+        elif 1 in norm_grids:
+            c, z = _centroid_and_zone(norm_grids[1])
+            dominance["fighter1_zone"]     = z
+            dominance["fighter1_centroid"] = list(c)
+
+        payload = {
+            "t":            "heatmap",
+            "frame_size":   [W, H],
+            "grid_size":    [HEATMAP_GRID_W, HEATMAP_GRID_H],
+            "fighters":     fighters_payload,
+            "dominance":    dominance,
+            "bg_path":      str(bg_path.resolve()),
+            "slot_raw_ids": {str(k): v for k, v in slot_raw_ids.items()},
+        }
+        print(f"__JSON__ {json.dumps(payload)}")
+
+    # ── Transcode to H.264 (browser-playable) ────────────────────────────────
+    # OpenCV writes MPEG-4 Part 2 (fourcc 'mp4v'), which most browsers can't
+    # decode in <video>. Re-encode to H.264 with faststart for instant streaming.
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if ffmpeg_bin and out_path.exists():
+        h264_path = out_dir / f"v2_{ts}_h264.mp4"
+        try:
+            subprocess.run(
+                [ffmpeg_bin, "-y", "-loglevel", "error",
+                 "-i", str(out_path),
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                 "-pix_fmt", "yuv420p",
+                 "-movflags", "+faststart",
+                 str(h264_path)],
+                check=True, timeout=900,
+            )
+            if h264_path.exists() and h264_path.stat().st_size > 0:
+                # Replace the mp4v artefact with the H.264 version
+                try:
+                    out_path.unlink()
+                except OSError:
+                    pass
+                out_path = h264_path
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            print(f"  [warn] ffmpeg transcode failed ({e}); serving mp4v fallback")
+
     # ── Summary ───────────────────────────────────────────────────────────────
     print("\n" + "=" * 70)
     print("DONE")
@@ -975,6 +1205,26 @@ def main():
     print(f"  Output: {out_path}")
     if out_path.exists():
         print(f"  Size  : {out_path.stat().st_size / 1e6:.1f} MB")
+
+    # Referee diagnostics — answer "why didn't we see a referee?"
+    if diag_frames > 0:
+        avg_dets = diag_det_count_sum / diag_frames
+        pct_3plus = 100.0 * diag_frames_3plus_det / diag_frames
+        pct_with_ref = 100.0 * diag_frames_with_ref / diag_frames
+        print("\n  Referee Diagnostics:")
+        print(f"    Frames processed       : {diag_frames}")
+        print(f"    Avg detections / frame : {avg_dets:.2f}")
+        print(f"    Max detections / frame : {diag_max_det_in_frame}")
+        print(f"    Frames with 3+ dets    : {diag_frames_3plus_det} ({pct_3plus:.1f}%)")
+        print(f"    Frames w/ referee slot : {diag_frames_with_ref} ({pct_with_ref:.1f}%)")
+        if diag_frames_3plus_det == 0:
+            print("    → YOLO never returned a 3rd person above conf threshold.")
+            print("      The detector model isn't recognising the referee — needs more")
+            print("      referee examples in training data, or lower DETECTION_CONF further.")
+        elif diag_frames_with_ref == 0:
+            print("    → 3rd-person detections exist but all overlap a fighter (IoU>0.25).")
+            print("      Referee is too close to fighters in this footage — relax the IoU")
+            print("      overlap threshold in the referee block.")
 
     print("\n  Punch Summary:")
     for fid, state in fighter_states.items():

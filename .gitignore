@@ -5,10 +5,14 @@ frontend/build/
 frontend/node_modules/
 frontend/tsconfig.tsbuildinfo
 
-# Uploaded videos (keep placeholder)
+# Uploaded videos + generated artefacts (heatmap backdrops etc) — keep placeholder
 frontend/public/uploads/*.mp4
 frontend/public/uploads/*.avi
 frontend/public/uploads/*.mov
+frontend/public/uploads/*.jpg
+frontend/public/uploads/*.jpeg
+frontend/public/uploads/*.png
+frontend/public/uploads/*.webp
 !frontend/public/uploads/.gitkeep
 
 # Python

@@ -15,6 +15,7 @@ import {
 } from '@phosphor-icons/react'
 import Link from 'next/link'
 import { JobResult, PunchType, FighterResult } from '@/lib/types'
+import FighterHeatmapSection from '@/components/FighterHeatmap'
 
 const PUNCH_LABELS: Record<PunchType, string> = {
   jab: 'Jab',
@@ -426,9 +427,6 @@ export default function ResultsView({ jobId }: { jobId: string }) {
               src={job.videoUrl!}
               filename={`tencount_${jobId}_output.mp4`}
             />
-            <p className="text-xs text-zinc-600 mt-2 font-mono">
-              * Showing original upload. Annotated output available when connected to Python backend.
-            </p>
           </motion.div>
 
           {/* Timeline */}
@@ -518,6 +516,22 @@ export default function ResultsView({ jobId }: { jobId: string }) {
           </motion.div>
         </div>
       </div>
+
+      {/* Spatial heatmap section — full-width below the main grid */}
+      {job.heatmap && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35, type: 'spring', stiffness: 200, damping: 28 }}
+          className="mt-6"
+        >
+          <FighterHeatmapSection
+            heatmap={job.heatmap}
+            fighter1={f1}
+            fighter2={f2}
+          />
+        </motion.div>
+      )}
     </div>
   )
 }

@@ -313,7 +313,7 @@ function PoseVisual() {
         priority={false}
       />
       {/* Left fade — blends into dark section bg where the text lives */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#0c0c0e]/70 via-transparent to-transparent" />
+      <div className="lp-pose-fade absolute inset-0 bg-gradient-to-r from-[#0c0c0e]/70 via-transparent to-transparent" />
       {/* Amber tint to match stage-02 accent */}
       <div className="absolute inset-0 bg-amber-500/[0.04]" />
       {/* Edge refraction ring */}
@@ -438,7 +438,7 @@ export default function LandingPage() {
         />
         {/* Directional overlay — heavy bottom-left (text zone), lighter top-right (image zone) */}
         <div
-          className="absolute inset-0"
+          className="lp-hero-overlay absolute inset-0"
           style={{
             background: `linear-gradient(
               135deg,
@@ -528,7 +528,7 @@ export default function LandingPage() {
             whileInView={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.65, delay: 0.0, ease: [0.22, 1, 0.36, 1] }}
             viewport={{ once: true, amount: 0.25 }}
-            className="relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
+            className="lp-feature-card relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
             style={{ background: 'rgba(12,10,15,0.55)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
           >
             {/* Blur shimmer — materialises after card rises */}
@@ -553,7 +553,7 @@ export default function LandingPage() {
             whileInView={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.65, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
             viewport={{ once: true, amount: 0.25 }}
-            className="relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
+            className="lp-feature-card relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
             style={{ background: 'rgba(12,10,15,0.55)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
           >
             <div
@@ -577,7 +577,7 @@ export default function LandingPage() {
             whileInView={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.65, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
             viewport={{ once: true, amount: 0.25 }}
-            className="relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
+            className="lp-feature-card relative rounded-[1.75rem] border border-white/[0.07] overflow-hidden p-7 flex flex-col"
             style={{ background: 'rgba(12,10,15,0.55)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)' }}
           >
             <div

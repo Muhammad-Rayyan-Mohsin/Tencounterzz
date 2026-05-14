@@ -13,6 +13,7 @@ This document is the authoritative source on the system's architecture, componen
 
 ## Table of Contents
 
+0. [Elevator Pitch](#0-elevator-pitch)
 1. [System Overview](#1-system-overview)
 2. [High-Level Architecture](#2-high-level-architecture)
 3. [Tech Stack](#3-tech-stack)
@@ -28,6 +29,49 @@ This document is the authoritative source on the system's architecture, componen
 13. [Performance Characteristics](#13-performance-characteristics)
 14. [Known Limitations & Technical Debt](#14-known-limitations--technical-debt)
 15. [Future Work](#15-future-work)
+
+---
+
+## 0. Elevator Pitch
+
+### 0.1 The 30-Second Version
+
+**TenCount turns any boxing sparring video into a per-fighter scorecard.** A coach drops in an MP4; the app returns total punches, a breakdown by punch type (jab, cross, lead/rear hook, lead/rear uppercut), a Light/Medium/Heavy intensity rating for every shot, a punch-by-punch timeline, and an annotated video — without anyone wearing a sensor, tagging frames, or touching a stopwatch. The entire pipeline — detection, tracking, pose, punch classification, intensity scoring — runs as one Next.js + Python web app on a single EC2 box.
+
+### 0.2 The 60-Second Version
+
+Coaches today either count punches by hand (slow, biased, ends at the bell) or strap a $300+ sensor to each glove (intrusive, fragile, doesn't work for archive footage). **TenCount removes both constraints**: vision-only, retroactive analytics on any video you already have.
+
+Under the hood it is a four-stage CV pipeline:
+
+1. A **custom-trained YOLOv11m** detector finds people; an **IoU + Hungarian tracker with inertia and ID recycling** keeps a stable identity on each fighter through occlusions and clinches.
+2. **YOLOv8m-pose** extracts 17 COCO keypoints from each fighter's crop, EMA-smoothed and buffered into 25-frame windows (~0.83 s @ 30 fps).
+3. A **rule-based per-arm state machine** detects punch *events* (elbow extension + wrist velocity + angle delta, with cooldown and retraction gating).
+4. A **custom AttentionBiLSTM** (2-layer BiLSTM, 256 hidden, attention bottleneck, 6-class softmax) classifies each detected punch into one of six punch types from a 75-dim feature vector (normalised keypoints + 7 engineered angles + first-order velocities).
+5. A **6-feature intensity model** (wrist impulse, elbow angular velocity, shoulder rotation, jerk, hip impulse, post-peak deceleration) scores each punch as Light / Medium / Heavy, with per-fighter percentile adaptation after five punches.
+
+The frontend is a polished **Next.js 14** app with framer-motion + GSAP + Lenis; the backend is a Node API that spawns one Python subprocess per job and parses newline-delimited JSON events off stdout. The whole stack ships as a single systemd unit on EC2 — provisioned by one bash script (`./deploy.sh deploy`) — and is reachable from any browser.
+
+### 0.3 Why This Is Hard (and Why It's Different)
+
+- **Identity is the foundation, not an afterthought.** Most demo boxing-analytics code treats every detection as a fresh person. TenCount carries fighter identity through occlusions with an inertia-weighted Hungarian matcher and a track-recycling pass that re-attaches a "new" detection to a recently-expired track if it appears in the same place — which is what makes per-fighter counts trustworthy.
+- **Two-stage punch logic.** Rule-based detection answers *did a punch happen?* on physically-grounded features (cosine-law elbow angles, normalised wrist velocity). The neural classifier only answers *what kind?*. This split is what lets the system count reliably on a CPU box and still produce six-class typing.
+- **Adaptive intensity.** The intensity scorer falls back to global maxima for the first five punches, then switches to **per-fighter 95th-percentile normalisation**, so "heavy" means heavy *for that fighter*, not relative to a hand-picked constant.
+- **Production-grade UI for a research-grade pipeline.** The model stack is non-trivial (custom YOLOv11m + YOLOv8m pose + custom AttentionBiLSTM), but the user never sees any of it — they see a drag-and-drop, a five-step progress tracker, and a results page with an annotated video, animated punch bars, and an SVG timeline.
+
+### 0.4 What Ships Today
+
+- One-instance deploy: a **single `./deploy.sh deploy`** stands up AWS EC2 (eu-north-1), key pair, security group, 100 GB EBS, Node 20, Python venv, models, and a systemd unit (`tencount.service`) — and prints the public URL.
+- **Up to 500 MB** MP4/WebM uploads, validated client- and server-side.
+- **Async job lifecycle** (`detecting → pose → classifying → rendering → complete`) surfaced via 1 Hz polling on `/api/jobs/[jobId]`.
+- Output: an **annotated MP4** with persistent labels (1.5 s) and an on-screen legend, plus a **typed JSON result** (totals, per-type breakdowns, timeline) that drives the results page.
+- **Six punch classes**: Jab, Cross, Lead Hook, Rear Hook, Lead Uppercut, Rear Uppercut.
+- **Three intensity tiers**: Light (<0.40), Medium, Heavy (≥0.70).
+- Works on **two fighters + a referee** (the third detection is rendered for context but excluded from stats).
+
+### 0.5 The One-Sentence Pitch (for slides)
+
+> **TenCount is a single-page web app that turns any boxing video into per-fighter punch counts, six-class punch-type breakdowns, intensity ratings, and an annotated replay — powered by a custom YOLOv11m + YOLOv8m-pose + AttentionBiLSTM pipeline running on a single EC2 instance.**
 
 ---
 

@@ -77,6 +77,16 @@ def _intercept(*a, **kw):
     _orig_print(*a, **kw)
     sys.stdout.flush()
 
+    # ── Raw JSON passthrough (heatmap and similar structured events) ────────
+    if text.startswith("__JSON__"):
+        raw = text[len("__JSON__"):].lstrip()
+        try:
+            obj = json.loads(raw)
+            emit(obj)
+        except Exception:
+            pass
+        return
+
     # ── Frame progress ──────────────────────────────────────────────────────
     # "  Frame 60/847  (7.1%)"
     m = re.search(r"Frame\s+(\d+)/(\d+)\s+\((\d+(?:\.\d+)?)%\)", text)

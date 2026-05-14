@@ -71,3 +71,165 @@
     background: var(--surface-raised);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Light mode — additive overrides only. Activated by adding `light` class
+ * to <html> (see ThemeToggle.tsx). Existing component classes are left
+ * untouched; we just remap the dark-mode tokens to their light counterparts
+ * with higher specificity.
+ * ───────────────────────────────────────────────────────────────────────── */
+html.light {
+  color-scheme: light;
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --surface-raised: #f4f4f5;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14);
+  --accent-dim: rgba(225, 29, 72, 0.06);
+}
+
+html.light body { background: #fafaf9 !important; color: #18181b !important; }
+html.light .bg-\[\#0c0c0e\] { background-color: #fafaf9 !important; }
+
+/* Solid zinc backgrounds → light surfaces */
+html.light .bg-zinc-950          { background-color: #fafaf9 !important; }
+html.light .bg-zinc-900          { background-color: #f4f4f5 !important; }
+html.light .bg-zinc-800          { background-color: #e4e4e7 !important; }
+html.light .bg-zinc-700          { background-color: #d4d4d8 !important; }
+html.light .bg-zinc-600          { background-color: #a1a1aa !important; }
+html.light .bg-zinc-500          { background-color: #71717a !important; }
+
+/* Translucent zinc backdrops (glassmorphic surfaces) */
+html.light .bg-zinc-950\/60      { background-color: rgba(250, 250, 249, 0.7) !important; }
+html.light .bg-zinc-950\/70      { background-color: rgba(250, 250, 249, 0.8) !important; }
+html.light .bg-zinc-900\/30      { background-color: rgba(244, 244, 245, 0.5) !important; }
+html.light .bg-zinc-900\/40      { background-color: rgba(244, 244, 245, 0.6) !important; }
+html.light .bg-zinc-900\/60      { background-color: rgba(244, 244, 245, 0.75) !important; }
+html.light .bg-zinc-900\/80      { background-color: rgba(244, 244, 245, 0.88) !important; }
+html.light .bg-zinc-600\/60      { background-color: rgba(161, 161, 170, 0.45) !important; }
+html.light .bg-zinc-500\/70      { background-color: rgba(113, 113, 122, 0.4) !important; }
+
+/* White-on-dark glass → black-on-light glass */
+html.light .bg-white\/\[0\.01\]  { background-color: rgba(0, 0, 0, 0.025) !important; }
+html.light .bg-white\/\[0\.02\]  { background-color: rgba(0, 0, 0, 0.035) !important; }
+html.light .bg-white\/\[0\.05\]  { background-color: rgba(0, 0, 0, 0.05) !important; }
+html.light .bg-white\/\[0\.08\]  { background-color: rgba(0, 0, 0, 0.07) !important; }
+html.light .bg-white\/10         { background-color: rgba(0, 0, 0, 0.08) !important; }
+html.light .bg-black\/30         { background-color: rgba(0, 0, 0, 0.08) !important; }
+
+/* Borders — white-alpha → black-alpha */
+html.light .border-white\/\[0\.04\] { border-color: rgba(0, 0, 0, 0.06) !important; }
+html.light .border-white\/\[0\.05\] { border-color: rgba(0, 0, 0, 0.07) !important; }
+html.light .border-white\/\[0\.06\] { border-color: rgba(0, 0, 0, 0.09) !important; }
+html.light .border-white\/\[0\.07\] { border-color: rgba(0, 0, 0, 0.1) !important; }
+html.light .border-white\/\[0\.08\] { border-color: rgba(0, 0, 0, 0.12) !important; }
+html.light .border-white\/20       { border-color: rgba(0, 0, 0, 0.18) !important; }
+html.light .border-zinc-500\/40    { border-color: rgba(0, 0, 0, 0.18) !important; }
+
+/* Text — invert the zinc scale */
+html.light .text-white     { color: #18181b !important; }
+html.light .text-zinc-50   { color: #18181b !important; }
+html.light .text-zinc-100  { color: #27272a !important; }
+html.light .text-zinc-200  { color: #3f3f46 !important; }
+html.light .text-zinc-300  { color: #52525b !important; }
+html.light .text-zinc-400  { color: #71717a !important; }
+html.light .text-zinc-500  { color: #a1a1aa !important; }
+html.light .text-zinc-600  { color: #b4b4b8 !important; }
+html.light .text-zinc-700  { color: #d4d4d8 !important; }
+html.light .text-zinc-800  { color: #e4e4e7 !important; }
+
+/* Gradient stops referencing dark base */
+html.light .from-black\/90 { --tw-gradient-from: rgba(244, 244, 245, 0.92) !important;
+                              --tw-gradient-to: rgba(244, 244, 245, 0) !important;
+                              --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+
+/* Scrollbar + selection in light mode */
+html.light ::selection {
+  background: rgba(225, 29, 72, 0.18) !important;
+  color: #18181b !important;
+}
+html.light ::-webkit-scrollbar-thumb       { background: #d4d4d8 !important; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #a1a1aa !important; }
+
+/* Nav top-bar treatment when scrolled */
+html.light .nav-scrolled {
+  background: rgba(250, 250, 249, 0.92) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Theme toggle — looks good in both modes */
+html.light .theme-toggle {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #27272a !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+html.light .theme-toggle:hover { color: #09090b !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Landing page — light-mode fixes for inline-styled / arbitrary-hex
+ * elements that don't pick up the regular Tailwind overrides above.
+ * Dark mode is completely untouched (none of these rules apply when
+ * <html> doesn't have the `light` class).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Hero photo overlay — was a near-black diagonal wash, becomes a near-white
+   one in light mode so text on a light bg stays readable. */
+html.light .lp-hero-overlay {
+  background: linear-gradient(
+    135deg,
+    rgba(250, 250, 249, 0.94) 0%,
+    rgba(250, 250, 249, 0.86) 35%,
+    rgba(250, 250, 249, 0.68) 65%,
+    rgba(250, 250, 249, 0.48) 100%
+  ) !important;
+}
+
+/* Feature artifact cards — invert the dark-glass treatment to light-glass. */
+html.light .lp-feature-card {
+  background: rgba(255, 255, 255, 0.7) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Tailwind arbitrary-hex gradient stops referencing #0c0c0e — swap the
+   solid colour to the light page-bg while preserving the alpha values. */
+html.light .from-\[\#0c0c0e\] {
+  --tw-gradient-from: #fafaf9 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(250 250 249 / 0) var(--tw-gradient-to-position) !important;
+}
+html.light .from-\[\#0c0c0e\]\/70 {
+  --tw-gradient-from: rgb(250 250 249 / 0.7) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(250 250 249 / 0) var(--tw-gradient-to-position) !important;
+}
+html.light .from-\[\#0c0c0e\]\/85 {
+  --tw-gradient-from: rgb(250 250 249 / 0.85) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(250 250 249 / 0) var(--tw-gradient-to-position) !important;
+}
+html.light .via-\[\#0c0c0e\]\/80 {
+  --tw-gradient-to: rgb(250 250 249 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), rgb(250 250 249 / 0.8) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+html.light .to-\[\#0c0c0e\]\/20 {
+  --tw-gradient-to: rgb(250 250 249 / 0.2) var(--tw-gradient-to-position) !important;
+}
+html.light .to-\[\#0c0c0e\]\/85 {
+  --tw-gradient-to: rgb(250 250 249 / 0.85) var(--tw-gradient-to-position) !important;
+}
+
+/* Grid-pattern background — was white-on-dark; swap to dark-on-light. */
+html.light .bg-grid-pattern {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px) !important;
+}
+
+/* Manifesto dim line ("Scorecards record outcomes.") — text-zinc-700 is too
+   pale on a light bg; lift it just enough to remain a "muted" treatment. */
+html.light .m-line .text-zinc-700 { color: #a1a1aa !important; }
+
+/* Pipeline tag pills + manifesto tags use border-white/[0.06] which we
+   already remap, but the text-zinc-700 inside the manifesto tags was a
+   border-tone grey that disappears on light — handled by the rule above. */
+

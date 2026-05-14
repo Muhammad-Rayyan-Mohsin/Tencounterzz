@@ -30,6 +30,43 @@ export interface PunchBreakdown {
   rear_uppercut: number
 }
 
+export type FighterZone = 'left' | 'center' | 'right'
+
+export interface FighterHeatmap {
+  /** Base64-encoded uint8 row-major grid (height × width bytes) */
+  grid: string
+  /** Number of frames contributing to the heatmap */
+  frames: number
+}
+
+export interface HeatmapDominance {
+  /** % of contested cells where fighter 1 was the dominant occupant */
+  fighter1Pct?: number
+  /** % of contested cells where fighter 2 was the dominant occupant */
+  fighter2Pct?: number
+  /** % of cells where both fighters spent meaningful time */
+  contestedPct?: number
+  /** % of each fighter's total intensity inside the central 30% region */
+  centerControl: Record<string, number>
+  fighter1Zone?: FighterZone
+  fighter2Zone?: FighterZone
+  /** Normalized [0,1] (x, y) weighted centroid in the video frame */
+  fighter1Centroid?: [number, number]
+  fighter2Centroid?: [number, number]
+}
+
+export interface HeatmapData {
+  /** Source video dimensions [width, height] in pixels */
+  frameSize: [number, number]
+  /** Heatmap grid dimensions [width, height] in cells (typically [64, 64]) */
+  gridSize: [number, number]
+  /** Heatmap data keyed by stringified fighter ID ('1', '2') */
+  fighters: Record<string, FighterHeatmap>
+  dominance: HeatmapDominance
+  /** Public URL for the background image (first frame snapshot) */
+  bgUrl?: string
+}
+
 export interface FighterResult {
   id: 1 | 2
   totalPunches: number
@@ -49,6 +86,7 @@ export interface JobResult {
   frameCount?: number
   fighters?: [FighterResult, FighterResult]
   timeline?: PunchEvent[]
+  heatmap?: HeatmapData
   error?: string
   startedAt: number
   completedAt?: number

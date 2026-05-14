@@ -3,7 +3,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { spawn } from 'child_process'
 import { jobStore } from '@/lib/job-store'
-import type { JobResult, PunchType, FighterResult, PunchEvent } from '@/lib/types'
+import type { JobResult, PunchType, FighterResult, PunchEvent, HeatmapData, FighterZone } from '@/lib/types'
 
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -106,13 +106,16 @@ function runInference(jobId: string, videoPath: string) {
     if (cur) jobStore.set(jobId, { ...cur, ...patch })
   }
 
-  // Per-fighter accumulators
-  const totals: Record<number, number> = {}
-  const breakdown: Record<number, Record<PunchType, number>> = {
-    1: defaultBreakdown(),
-    2: defaultBreakdown(),
-  }
-  const liveEvents: PunchEvent[] = []
+  // Per-fighter accumulators — keyed by RAW track ID from the Python pipeline.
+  // YOLO can recycle track IDs (e.g. fighter 2 dropping out and reappearing
+  // as fighter 7) so we collect everything raw and remap to canonical slots
+  // 1/2 once we have enough data to decide which two tracks are the real fighters.
+  const rawTotals: Record<number, number> = {}
+  const rawBreakdown: Record<number, Record<PunchType, number>> = {}
+  const rawLiveEvents: Array<{ time: number; fighter: number; type: PunchType }> = []
+  let heatmapData: HeatmapData | null = null
+  /** Authoritative slot-to-raw-id map from the Python heatmap pass, if any. */
+  let pythonSlotMap: { 1: number[]; 2: number[] } | null = null
   let outputVideoAbsPath: string | null = null
   let frameTotal = 0
   let fps = 30
@@ -139,7 +142,13 @@ function runInference(jobId: string, videoPath: string) {
         frameTotal = parseInt(fpsMatch[2])
       }
 
-      if (!trimmed.startsWith('{')) continue
+      if (!trimmed.startsWith('{')) {
+        // Mirror non-JSON inference output (e.g. referee diagnostics, ffmpeg
+        // warnings) to the Node console so the dev server log is the single
+        // source of truth for debugging a run.
+        if (trimmed) console.log('[inference]', trimmed.slice(0, 240))
+        continue
+      }
 
       let msg: Record<string, unknown>
       try { msg = JSON.parse(trimmed) } catch { continue }
@@ -167,24 +176,24 @@ function runInference(jobId: string, videoPath: string) {
         update({ status, progress: v, currentStep: step, currentDetail: detail })
 
       } else if (t === 'punch_event') {
-        const fighter = msg.fighter as 1 | 2
+        const fighter = msg.fighter as number
         const type    = msg.type as PunchType
         // Approximate time from current progress
         const cur = jobStore.get(jobId)
         const approxTime = cur && cur.progress
           ? parseFloat(((cur.progress / 100) * (frameTotal / fps || 30)).toFixed(2))
           : 0
-        liveEvents.push({ time: approxTime, fighter, type })
+        rawLiveEvents.push({ time: approxTime, fighter, type })
 
       } else if (t === 'fighter_total') {
-        totals[msg.id as number] = msg.total as number
+        rawTotals[msg.id as number] = msg.total as number
 
       } else if (t === 'breakdown') {
         const fighter = msg.fighter as number
         const type    = msg.type as PunchType
         const n       = msg.n as number
-        if (!breakdown[fighter]) breakdown[fighter] = defaultBreakdown()
-        breakdown[fighter][type] = n
+        if (!rawBreakdown[fighter]) rawBreakdown[fighter] = defaultBreakdown()
+        rawBreakdown[fighter][type] = n
 
       } else if (t === 'output') {
         outputVideoAbsPath = msg.path as string
@@ -194,6 +203,44 @@ function runInference(jobId: string, videoPath: string) {
           currentStep:   'Rendering Output',
           currentDetail: 'H.264 annotated video encoded — finalising...',
         })
+
+      } else if (t === 'heatmap') {
+        const fighters = msg.fighters as Record<string, { grid: string; frames: number }>
+        const dom = (msg.dominance ?? {}) as Record<string, unknown>
+        const cc = (dom.center_control ?? {}) as Record<string, number>
+        const rawIdMap = msg.slot_raw_ids as
+          | { '1'?: number[]; '2'?: number[] }
+          | undefined
+        if (rawIdMap) {
+          pythonSlotMap = {
+            1: rawIdMap['1'] ?? [],
+            2: rawIdMap['2'] ?? [],
+          }
+        }
+
+        // Map absolute Python bg path to a public /uploads URL
+        let bgUrl: string | undefined
+        const rawBg = msg.bg_path as string | undefined
+        if (rawBg) {
+          bgUrl = `/uploads/${path.basename(rawBg)}`
+        }
+
+        heatmapData = {
+          frameSize: msg.frame_size as [number, number],
+          gridSize: msg.grid_size as [number, number],
+          fighters,
+          dominance: {
+            fighter1Pct: dom.fighter1_pct as number | undefined,
+            fighter2Pct: dom.fighter2_pct as number | undefined,
+            contestedPct: dom.contested_pct as number | undefined,
+            centerControl: cc,
+            fighter1Zone: dom.fighter1_zone as FighterZone | undefined,
+            fighter2Zone: dom.fighter2_zone as FighterZone | undefined,
+            fighter1Centroid: dom.fighter1_centroid as [number, number] | undefined,
+            fighter2Centroid: dom.fighter2_centroid as [number, number] | undefined,
+          },
+          bgUrl,
+        }
 
       } else if (t === 'done') {
         update({ progress: 99, currentStep: 'Finalising', currentDetail: 'Building results...' })
@@ -223,15 +270,80 @@ function runInference(jobId: string, videoPath: string) {
 
     // Build final FighterResult objects
     const videoDuration = frameTotal > 0 ? frameTotal / fps : 42
+
+    // ── Canonical fighter mapping ────────────────────────────────────────────
+    // The Python tracker assigns raw integer IDs that can drift mid-fight (one
+    // logical fighter can hop between IDs 2→3→5→7 as occlusions break tracking).
+    // We collapse everything to two slots. The Python heatmap pass publishes
+    // its slot→raw-ID map (`slot_raw_ids`); we honor it so punch counts and
+    // heatmap data agree on which raw ID is "Fighter 1" vs "Fighter 2". When
+    // Python's map is unavailable (no heatmap event), we fall back to ranking
+    // raw IDs by punch count.
+    type PunchCounts = Record<PunchType, number>
+    const slotByRawId = new Map<number, 1 | 2>()
+
+    if (pythonSlotMap) {
+      for (const id of pythonSlotMap[1]) slotByRawId.set(id, 1)
+      for (const id of pythonSlotMap[2]) slotByRawId.set(id, 2)
+    } else {
+      const allRawIds = new Set<number>([
+        ...Object.keys(rawTotals).map(Number),
+        ...Object.keys(rawBreakdown).map(Number),
+        ...rawLiveEvents.map(e => e.fighter),
+      ])
+      const rankedIds = Array.from(allRawIds).sort(
+        (a, b) => (rawTotals[b] ?? 0) - (rawTotals[a] ?? 0),
+      )
+      const anchorIds = rankedIds.slice(0, 2)
+      anchorIds.forEach((id, i) => slotByRawId.set(id, (i + 1) as 1 | 2))
+      for (const id of rankedIds.slice(2)) {
+        if (anchorIds.length < 2) break
+        const own = rawTotals[id] ?? 0
+        const distA = Math.abs((rawTotals[anchorIds[0]] ?? 0) - own)
+        const distB = Math.abs((rawTotals[anchorIds[1]] ?? 0) - own)
+        slotByRawId.set(id, distA <= distB ? 1 : 2)
+      }
+    }
+
+    const mergedTotals: Record<1 | 2, number> = { 1: 0, 2: 0 }
+    const mergedBreakdown: Record<1 | 2, PunchCounts> = {
+      1: defaultBreakdown(),
+      2: defaultBreakdown(),
+    }
+    for (const [rawIdStr, count] of Object.entries(rawTotals)) {
+      const slot = slotByRawId.get(Number(rawIdStr))
+      if (slot) mergedTotals[slot] += count
+    }
+    for (const [rawIdStr, br] of Object.entries(rawBreakdown)) {
+      const slot = slotByRawId.get(Number(rawIdStr))
+      if (!slot) continue
+      for (const pt of Object.keys(br) as PunchType[]) {
+        mergedBreakdown[slot][pt] += br[pt] ?? 0
+      }
+    }
+
+    const liveEvents: PunchEvent[] = rawLiveEvents
+      .map((e) => {
+        const slot = slotByRawId.get(e.fighter)
+        return slot ? { time: e.time, fighter: slot, type: e.type } : null
+      })
+      .filter((e): e is PunchEvent => e !== null)
+
     const f1: FighterResult = {
       id: 1,
-      totalPunches: totals[1] ?? liveEvents.filter(e => e.fighter === 1).length,
-      breakdown: breakdown[1],
+      totalPunches:
+        mergedTotals[1] > 0
+          ? mergedTotals[1]
+          : liveEvents.filter((e) => e.fighter === 1).length,
+      breakdown: mergedBreakdown[1],
     }
     const f2: FighterResult = {
       id: 2,
-      totalPunches: totals[2] ?? liveEvents.filter(e => e.fighter === 2).length,
-      breakdown: breakdown[2],
+      totalPunches:
+        mergedTotals[2] > 0
+          ? mergedTotals[2]
+          : liveEvents.filter((e) => e.fighter === 2).length,
+      breakdown: mergedBreakdown[2],
     }
 
     // Use live events if we have enough; otherwise synthesise from breakdown
@@ -255,6 +367,7 @@ function runInference(jobId: string, videoPath: string) {
       frameCount:    frameTotal,
       fighters:      [f1, f2],
       timeline,
+      heatmap:       heatmapData ?? undefined,
       completedAt:   Date.now(),
     })
   })
