@@ -1,9 +1,18 @@
 import { NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
+import { writeFile, mkdir, readFile } from 'fs/promises'
 import path from 'path'
 import { spawn } from 'child_process'
 import { jobStore } from '@/lib/job-store'
-import type { JobResult, PunchType, FighterResult, PunchEvent, HeatmapData, FighterZone } from '@/lib/types'
+import type {
+  JobResult,
+  PunchType,
+  FighterResult,
+  PunchEvent,
+  HeatmapData,
+  FighterZone,
+  RunSummary,
+} from '@/lib/types'
+import { runKey, s3PutBuffer } from '@/lib/s3'
 
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -356,6 +365,7 @@ function runInference(jobId: string, videoPath: string) {
       ? `/uploads/${path.basename(outputVideoAbsPath)}`
       : cur.videoUrl
 
+    const completedAt = Date.now()
     update({
       status:        'complete',
       progress:      100,
@@ -368,12 +378,101 @@ function runInference(jobId: string, videoPath: string) {
       fighters:      [f1, f2],
       timeline,
       heatmap:       heatmapData ?? undefined,
-      completedAt:   Date.now(),
+      completedAt,
     })
+
+    // Archive to S3 — fire-and-forget so the response isn't blocked
+    const finalJob = jobStore.get(jobId)
+    if (finalJob) {
+      archiveRunToS3(finalJob, outputVideoAbsPath, heatmapData).catch((err) => {
+        console.error('[s3 archive] failed:', err)
+      })
+    }
   })
 
   proc.on('error', (err: Error) => {
     console.error('[inference spawn error]', err)
     update({ status: 'error', error: `Failed to start Python: ${err.message}` })
   })
+}
+
+// ── S3 archive ───────────────────────────────────────────────────────────────
+
+async function archiveRunToS3(
+  job: JobResult,
+  videoAbsPath: string | null,
+  heatmap: HeatmapData | null,
+) {
+  const runId = job.jobId
+
+  // 1) Upload the annotated video
+  let videoKey: string | undefined
+  if (videoAbsPath) {
+    const data = await readFile(videoAbsPath)
+    videoKey = runKey(runId, 'output.mp4')
+    await s3PutBuffer(videoKey, data, 'video/mp4')
+  } else if (job.videoUrl) {
+    // Fallback: the original uploaded video, in case the pipeline didn't emit a new one
+    const local = path.join(UPLOADS, path.basename(job.videoUrl))
+    try {
+      const data = await readFile(local)
+      videoKey = runKey(runId, 'output.mp4')
+      await s3PutBuffer(videoKey, data, 'video/mp4')
+    } catch {
+      /* nothing to archive */
+    }
+  }
+
+  // 2) Upload heatmap background, if present
+  let bgKey: string | undefined
+  if (heatmap?.bgUrl) {
+    const bgLocal = path.join(UPLOADS, path.basename(heatmap.bgUrl))
+    try {
+      const data = await readFile(bgLocal)
+      const ext = path.extname(bgLocal).toLowerCase()
+      bgKey = runKey(runId, `heatmap_bg${ext || '.jpg'}`)
+      const contentType =
+        ext === '.png' ? 'image/png' :
+        ext === '.webp' ? 'image/webp' :
+        'image/jpeg'
+      await s3PutBuffer(bgKey, data, contentType)
+    } catch {
+      /* heatmap bg optional */
+    }
+  }
+
+  // 3) Build the archived JobResult — strip local URLs, store S3 keys instead
+  const archivedHeatmap: HeatmapData | undefined = heatmap
+    ? { ...heatmap, bgUrl: bgKey }
+    : undefined
+
+  const archived: JobResult = {
+    ...job,
+    videoUrl: videoKey,
+    heatmap: archivedHeatmap,
+  }
+
+  // 4) Write the full result + a lightweight summary
+  await s3PutBuffer(
+    runKey(runId, 'full.json'),
+    JSON.stringify(archived),
+    'application/json',
+  )
+
+  const [f1, f2] = job.fighters ?? []
+  const summary: RunSummary = {
+    runId,
+    originalFilename: job.originalFilename,
+    completedAt: job.completedAt ?? Date.now(),
+    duration: job.duration,
+    fps: job.fps,
+    totalPunches: (f1?.totalPunches ?? 0) + (f2?.totalPunches ?? 0),
+    f1Punches: f1?.totalPunches ?? 0,
+    f2Punches: f2?.totalPunches ?? 0,
+  }
+  await s3PutBuffer(
+    runKey(runId, 'summary.json'),
+    JSON.stringify(summary),
+    'application/json',
+  )
 }

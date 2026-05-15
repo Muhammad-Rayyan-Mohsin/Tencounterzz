@@ -91,3 +91,14 @@ export interface JobResult {
   startedAt: number
   completedAt?: number
 }
+
+export interface RunSummary {
+  runId: string
+  originalFilename: string
+  completedAt: number
+  duration?: number
+  fps?: number
+  totalPunches: number
+  f1Punches: number
+  f2Punches: number
+}

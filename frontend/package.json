@@ -8,6 +8,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1047.0",
+    "@aws-sdk/s3-request-presigner": "^3.1047.0",
     "@phosphor-icons/react": "^2.1.7",
     "clsx": "^2.1.1",
     "framer-motion": "^11.3.19",

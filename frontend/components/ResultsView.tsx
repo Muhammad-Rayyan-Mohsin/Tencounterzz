@@ -330,20 +330,29 @@ function PunchTimeline({
   )
 }
 
-export default function ResultsView({ jobId }: { jobId: string }) {
+type ResultsViewProps =
+  | { jobId: string; runId?: undefined }
+  | { runId: string; jobId?: undefined }
+
+export default function ResultsView(props: ResultsViewProps) {
+  const id = props.jobId ?? props.runId
+  const source: 'job' | 'run' = props.jobId ? 'job' : 'run'
+  const endpoint = source === 'job' ? `/api/jobs/${id}` : `/api/runs/${id}`
+
   const [job, setJob] = useState<JobResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`/api/jobs/${jobId}`, { cache: 'no-store' })
+    fetch(endpoint, { cache: 'no-store' })
       .then((r) => {
-        if (r.status === 404) throw new Error('Job not found')
+        if (r.status === 404)
+          throw new Error(source === 'job' ? 'Job not found' : 'Run not found')
         if (!r.ok) throw new Error('Failed to load results')
         return r.json()
       })
       .then((data: JobResult) => {
-        if (data.status !== 'complete') {
+        if (source === 'job' && data.status !== 'complete') {
           setError('Analysis is still in progress.')
         } else {
           setJob(data)
@@ -351,7 +360,7 @@ export default function ResultsView({ jobId }: { jobId: string }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [jobId])
+  }, [endpoint, source])
 
   if (loading) {
     return (
@@ -425,7 +434,7 @@ export default function ResultsView({ jobId }: { jobId: string }) {
           >
             <VideoPlayer
               src={job.videoUrl!}
-              filename={`tencount_${jobId}_output.mp4`}
+              filename={`tencount_${id}_output.mp4`}
             />
           </motion.div>
 

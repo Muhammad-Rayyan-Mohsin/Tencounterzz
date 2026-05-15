@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Barbell, GithubLogo, Upload } from '@phosphor-icons/react/dist/ssr'
+import { Barbell, ClockCounterClockwise, GithubLogo, Upload } from '@phosphor-icons/react/dist/ssr'
 
 export default function Nav() {
   return (
@@ -19,6 +19,13 @@ export default function Nav() {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-slow" />
             v2 pipeline
           </span>
+          <Link
+            href="/history"
+            className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            <ClockCounterClockwise weight="bold" className="w-4 h-4" />
+            <span className="hidden sm:inline">History</span>
+          </Link>
           <a
             href="https://github.com/Muhammad-Rayyan-Mohsin/TenCount"
             target="_blank"
